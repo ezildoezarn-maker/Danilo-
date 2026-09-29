@@ -262,6 +262,17 @@
   .preview{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:12px 0;font-size:12px;line-height:1.6;}
   .preview b{font-size:14px;}
   .preview .warn{color:var(--amber);}
+  details.avancado{margin-top:16px;border-top:1px solid var(--line);padding-top:6px;}
+  details.avancado summary{
+    list-style:none;cursor:pointer;font-size:12px;color:var(--sub);padding:10px 0;
+    display:flex;justify-content:space-between;align-items:center;
+  }
+  details.avancado summary::-webkit-details-marker{display:none;}
+  details.avancado summary::after{content:'▾';}
+  details.avancado[open] summary::after{content:'▴';}
+  .exemplos{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px 14px;margin-top:10px;font-size:12px;line-height:1.7;}
+  .exemplos .pos{color:var(--green);}
+  .exemplos .neg{color:var(--red);}
   .btn-row{display:flex;gap:8px;}
   .btn-row .btn-main{flex:1;}
   .note{font-size:11px;color:var(--sub);line-height:1.5;margin-top:10px;}
@@ -759,30 +770,74 @@ async function carregarLucro(){
 }
 
 function abrirLucro(){
-  abrirSheet('lucro', 'Custo dos pacotes', 'Quanto pagas por cada pacote que vendes');
-  const d = ultimoLucro || { pacotes: [], custoPorGB: 0 };
-  const linhas = (d.pacotes || []).map(p => `
+  abrirSheet('lucro', 'Custo dos megas', 'O painel calcula o lucro sozinho a partir da tabela');
+  const d = ultimoLucro || { pacotes: [], custoPorGB: 0, tabela: [] };
+  const tabela = d.tabela || [];
+
+  // Até 3 pacotes da tabela para mostrar o cálculo automático
+  const exemplos = [];
+  if (tabela.length) {
+    [0.15, 0.5, 0.85].forEach(q => {
+      const p = tabela[Math.min(tabela.length - 1, Math.floor(q * tabela.length))];
+      if (p && !exemplos.includes(p)) exemplos.push(p);
+    });
+  }
+
+  const linhas = (d.pacotes || []).map(p => {
+    const sub = p.vendas
+      ? `${esc(p.vendas)} venda(s)${p.valor ? ' · ' + esc(p.valor) + ' MT' : ''}`
+      : (p.valor ? 'tabela: ' + esc(p.valor) + ' MT' : 'sem vendas');
+    return `
     <div class="pkg">
-      <div class="info">${esc(p.mb)} MB<small>${p.valor ? 'vendes a ' + esc(p.valor) + ' MT' : 'sem vendas ainda'}</small></div>
+      <div class="info">${esc(p.mb)} MB<small>${sub}</small></div>
       <input class="custo-pkg" data-mb="${esc(p.mb)}" type="number" inputmode="decimal" min="0" step="0.01"
              value="${p.custo ?? ''}" placeholder="custo MT" aria-label="Custo do pacote de ${esc(p.mb)} MB em MT">
-    </div>`).join('');
+    </div>`;
+  }).join('');
+
+  const aviso = tabela.length
+    ? ''
+    : '<p class="note" style="margin:0 0 10px">Ainda não guardaste a tabela de preços (menu → Tabela de preços). Sem ela, o painel só calcula com os MB que cada venda já traz.</p>';
 
   sheetBody.innerHTML = `
-    <div class="sec">Vale para todos os pacotes</div>
+    ${aviso}
+    <div class="sec">Quanto pagas por 1 GB?</div>
     <div class="pkg">
-      <div class="info">Custo por GB<small>usa 1 GB = 1024 MB</small></div>
+      <div class="info">Custo por GB<small>1 GB = 1024 MB, vale para todos os pacotes</small></div>
       <input id="inpCustoGB" type="number" inputmode="decimal" min="0" step="0.01" value="${d.custoPorGB || ''}" placeholder="MT" aria-label="Custo por GB em MT">
     </div>
-    <div class="sec">Ajustar pacotes específicos (opcional)</div>
-    ${linhas || '<div class="empty">Nenhum ajuste. Todos usam o custo por GB.</div>'}
-    <div class="sec">Adicionar outro pacote</div>
-    <div class="pkg novo">
-      <input class="mb" id="inpNovoMb" type="number" inputmode="numeric" min="1" step="1" placeholder="MB" aria-label="MB do novo pacote">
-      <input id="inpNovoCusto" type="number" inputmode="decimal" min="0" step="0.01" placeholder="custo MT" aria-label="Custo do novo pacote em MT">
-    </div>
+    <div class="exemplos" id="boxExemplos" ${exemplos.length ? '' : 'hidden'}></div>
     <button class="btn-main" id="btnGuardarCusto" style="margin-top:14px">Guardar</button>
-    <p class="note">Lucro = vendido − custo, só das vendas finalizadas hoje. O ajuste de um pacote tem prioridade sobre o custo por GB. Deixa o campo vazio para tirar o ajuste. Vendas sem nenhum custo ficam de fora do cálculo.</p>`;
+    <p class="note">Para cada venda, o painel vê quantos MB ela tem e calcula MB ÷ 1024 × custo por GB. Lucro = vendido − custo, só das vendas finalizadas hoje.</p>
+
+    <details class="avancado">
+      <summary>Avançado: custo diferente para um pacote específico</summary>
+      <p class="note" style="margin:0 0 6px">Só preenche se algum pacote não segue o custo por GB. O ajuste tem prioridade. Vazio = usa o custo por GB.</p>
+      ${linhas || '<div class="empty">Nenhum pacote vendido ainda.</div>'}
+      <div class="sec">Adicionar outro pacote</div>
+      <div class="pkg novo">
+        <input class="mb" id="inpNovoMb" type="number" inputmode="numeric" min="1" step="1" placeholder="MB" aria-label="MB do novo pacote">
+        <input id="inpNovoCusto" type="number" inputmode="decimal" min="0" step="0.01" placeholder="custo MT" aria-label="Custo do novo pacote em MT">
+      </div>
+    </details>`;
+
+  const inpGB = document.getElementById('inpCustoGB');
+  const box = document.getElementById('boxExemplos');
+  const atualizarExemplos = () => {
+    if (!exemplos.length) return;
+    const gb = Number(inpGB.value);
+    if (!(gb > 0)) {
+      box.innerHTML = 'Escreve o custo por GB e vês aqui o lucro de alguns pacotes da tua tabela.';
+      return;
+    }
+    box.innerHTML = '<b>Exemplos com a tua tabela</b><br>' + exemplos.map(p => {
+      const custo = p.mb / 1024 * gb;
+      const lucro = p.preco - custo;
+      return `${esc(p.mb)} MB ➜ vendes ${esc(p.preco)} MT · custo ${custo.toFixed(2)} MT · <span class="${lucro >= 0 ? 'pos' : 'neg'}">lucro ${lucro.toFixed(2)} MT</span>`;
+    }).join('<br>');
+  };
+  inpGB.addEventListener('input', atualizarExemplos);
+  atualizarExemplos();
 
   document.getElementById('btnGuardarCusto').addEventListener('click', async () => {
     const btn = document.getElementById('btnGuardarCusto');
@@ -802,7 +857,7 @@ function abrirLucro(){
     for (const v of Object.values(custosPacotes)) {
       if (v !== null && (!Number.isFinite(v) || v < 0)) { mostrarToast('Há um valor inválido'); return; }
     }
-    const gb = document.getElementById('inpCustoGB').value;
+    const gb = inpGB.value;
     btn.disabled = true;
     try {
       const res = await fetch(`${API_BASE}/api/lucro`, {
