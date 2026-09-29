@@ -273,6 +273,15 @@
   .exemplos{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px 14px;margin-top:10px;font-size:12px;line-height:1.7;}
   .exemplos .pos{color:var(--green);}
   .exemplos .neg{color:var(--red);}
+  button.fila-item{
+    width:100%;background:none;border:none;border-bottom:1px solid var(--line);
+    color:inherit;text-align:left;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;
+  }
+  button.fila-item:active{background:var(--panel2);}
+  button.fila-item:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;}
+  .btn-main.danger{border-color:var(--red);color:var(--red);}
+  .btn-main.ghost{border-color:var(--line);color:var(--sub);}
+  .btn-main.armado{background:var(--panel2);}
   .btn-row{display:flex;gap:8px;}
   .btn-row .btn-main{flex:1;}
   .note{font-size:11px;color:var(--sub);line-height:1.5;margin-top:10px;}
@@ -684,37 +693,126 @@ const ROTULO_FILA = {
   processado:  { txt: 'A enviar',   cls: 'env' }
 };
 
+let ultimaFila = [];
+
 async function carregarFila(){
   try {
     const res = await fetch(`${API_BASE}/api/fila`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const fila = await res.json();
     if (sheetAtual !== 'fila') return;
+    ultimaFila = fila;
     if (!fila.length) {
       sheetBody.innerHTML = '<div class="empty">Nenhum envio na fila</div>';
       return;
     }
-    sheetBody.innerHTML = '<div class="card">' + fila.map(p => {
+    sheetBody.innerHTML = '<div class="card">' + fila.map((p, i) => {
       const st = ROTULO_FILA[p.status] || { txt: p.status, cls: '' };
       const onde = p.telefone ? ` · Tel ${esc(p.telefone)}${p.sim ? ' ' + esc(p.sim) : ''}` : '';
       return `
-        <div class="fila-item">
+        <button class="fila-item" data-i="${i}">
           <div>
             <div class="who">${esc(p.nome)}</div>
             <div class="meta">${esc(p.mb)} MB · ${esc(p.valor)} MT · ${esc(p.hora)}${onde}</div>
           </div>
           <span class="badge ${st.cls}">${st.txt}</span>
-        </div>`;
+        </button>`;
     }).join('') + '</div>';
+    sheetBody.querySelectorAll('.fila-item').forEach(btn => {
+      btn.addEventListener('click', () => verPedido(ultimaFila[Number(btn.dataset.i)]));
+    });
   } catch (e) {
     if (sheetAtual === 'fila') sheetBody.innerHTML = `<div class="empty">Erro: ${esc(e.message || e)}</div>`;
   }
 }
 
+function mostrarFila(){
+  sheetAtual = 'fila';
+  document.getElementById('sheetTitulo').textContent = 'Fila de envios';
+  document.getElementById('sheetSub').textContent = 'Atualiza a cada 5 segundos · toca num pedido para gerir';
+  carregarFila();
+}
+
 function abrirFila(){
-  abrirSheet('fila', 'Fila de envios', 'Atualiza a cada 5 segundos');
+  abrirSheet('fila', 'Fila de envios', 'Atualiza a cada 5 segundos · toca num pedido para gerir');
+  clearInterval(filaTimer);
   carregarFila();
   filaTimer = setInterval(carregarFila, 5000);
+}
+
+/* Botão que pede um segundo toque para confirmar */
+function comConfirmacao(btn, rotuloConfirmar, acao){
+  const rotuloOriginal = btn.textContent;
+  let armado = false, t = null;
+  btn.addEventListener('click', () => {
+    if (!armado) {
+      armado = true;
+      btn.textContent = rotuloConfirmar;
+      btn.classList.add('armado');
+      t = setTimeout(() => { armado = false; btn.textContent = rotuloOriginal; btn.classList.remove('armado'); }, 4000);
+      return;
+    }
+    clearTimeout(t);
+    armado = false;
+    btn.classList.remove('armado');
+    btn.textContent = rotuloOriginal;
+    acao();
+  });
+}
+
+function verPedido(p){
+  if (!p) return;
+  sheetAtual = 'fila-detalhe';
+  const st = ROTULO_FILA[p.status] || { txt: p.status };
+  document.getElementById('sheetTitulo').textContent = 'Pedido';
+  document.getElementById('sheetSub').textContent = p.pedidoId;
+  const podeReabrir = p.status !== 'pendente';
+  const espera = (p.status === 'processado' && p.processadoHa !== null && p.processadoHa < 60)
+    ? `<p class="note warn" style="color:var(--amber)">Enviado ao telefone há ${esc(p.processadoHa)} s. Espera 1 minuto antes de reabrir.</p>` : '';
+
+  sheetBody.innerHTML = `
+    <div class="preview">
+      <b>${esc(p.nome)}</b><br>
+      Número: ${esc(p.numero)}<br>
+      ${esc(p.mb)} MB · ${esc(p.valor)} MT<br>
+      Estado: ${esc(st.txt)}${p.telefone ? ' · Tel ' + esc(p.telefone) + (p.sim ? ' ' + esc(p.sim) : '') : ''}
+    </div>
+    ${espera}
+    <label class="field">
+      <span>PIN</span>
+      <input id="inpPinAcao" type="password" inputmode="numeric" autocomplete="off" placeholder="PIN" aria-label="PIN">
+    </label>
+    <div class="btn-row">
+      ${podeReabrir ? '<button class="btn-main" id="btnReabrir">Reabrir</button>' : ''}
+      <button class="btn-main danger" id="btnCancelarPedido">Cancelar pedido</button>
+    </div>
+    <p class="note"><b>Reabrir</b> põe o pedido outra vez na fila. Só uses se o envio realmente falhou: se o telefone já enviou os megas, o cliente recebe duas vezes.</p>
+    <p class="note"><b>Cancelar</b> tira o pedido da fila. Não avisa o cliente nem devolve o dinheiro, isso tens de fazer à parte.</p>
+    <button class="btn-main ghost" id="btnVoltarFila" style="margin-top:12px">Voltar à fila</button>`;
+
+  const executar = async (acao) => {
+    const pin = document.getElementById('inpPinAcao').value;
+    if (!pin) { mostrarToast('Escreve o PIN'); return; }
+    try {
+      const res = await fetch(`${API_BASE}/api/fila/acao`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pedidoId: p.pedidoId, acao, pin })
+      });
+      const data = await res.json();
+      if (!res.ok || data.erro) throw new Error(data.erro || `HTTP ${res.status}`);
+      mostrarToast(acao === 'reabrir' ? 'Pedido reaberto' : 'Pedido cancelado');
+      mostrarFila();
+      carregarResumo();
+    } catch (e) {
+      mostrarToast(e.message || String(e));
+    }
+  };
+
+  const btnReabrir = document.getElementById('btnReabrir');
+  if (btnReabrir) comConfirmacao(btnReabrir, 'Toca de novo para reabrir', () => executar('reabrir'));
+  comConfirmacao(document.getElementById('btnCancelarPedido'), 'Toca de novo para cancelar', () => executar('cancelar'));
+  document.getElementById('btnVoltarFila').addEventListener('click', mostrarFila);
 }
 
 document.getElementById('btnFecharSheet').addEventListener('click', fecharSheet);
