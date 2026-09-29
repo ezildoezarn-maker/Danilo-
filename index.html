@@ -254,6 +254,16 @@
   .pkg input:focus-visible{outline:2px solid var(--accent);outline-offset:1px;}
   .pkg.novo input.mb{width:110px;text-align:left;}
   .sec{font-size:11px;color:var(--sub);margin:14px 0 4px;}
+  .field textarea{
+    width:100%;min-height:150px;padding:12px 14px;border-radius:12px;border:1px solid var(--line);
+    background:var(--panel2);color:var(--text);font-size:14px;font-family:inherit;resize:vertical;
+  }
+  .field textarea:focus-visible{outline:2px solid var(--accent);outline-offset:1px;}
+  .preview{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:12px 0;font-size:12px;line-height:1.6;}
+  .preview b{font-size:14px;}
+  .preview .warn{color:var(--amber);}
+  .btn-row{display:flex;gap:8px;}
+  .btn-row .btn-main{flex:1;}
   .note{font-size:11px;color:var(--sub);line-height:1.5;margin-top:10px;}
 
   @media (prefers-reduced-motion:reduce){
@@ -323,6 +333,10 @@
     <button class="drawer-close" id="btnFechar" aria-label="Fechar menu">✕</button>
   </div>
 
+  <button class="drawer-item" data-acao="tabela">
+    <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18"/><path d="M9 10v10"/></svg>
+    Tabela de preços
+  </button>
   <button class="drawer-item" data-acao="associar">
     <svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.07 0l2.12-2.12a5 5 0 0 0-7.07-7.07L11 4.93"/><path d="M14 11a5 5 0 0 0-7.07 0L4.81 13.12a5 5 0 0 0 7.07 7.07L13 19.07"/></svg>
     Associar o número
@@ -509,7 +523,9 @@ document.querySelectorAll('.drawer-item').forEach(item => {
   item.addEventListener('click', () => {
     const acao = item.dataset.acao;
     fecharMenu();
-    if (acao === 'sobre') {
+    if (acao === 'tabela') {
+      abrirTabela();
+    } else if (acao === 'sobre') {
       modalSobre.classList.add('open');
     } else if (acao === 'contacto') {
       window.open(`https://wa.me/${WHATSAPP_SUPORTE}`, '_blank');
@@ -753,20 +769,20 @@ function abrirLucro(){
     </div>`).join('');
 
   sheetBody.innerHTML = `
-    <div class="sec">Pacotes já vendidos</div>
-    ${linhas || '<div class="empty">Ainda não há pacotes vendidos. Adiciona um abaixo.</div>'}
+    <div class="sec">Vale para todos os pacotes</div>
+    <div class="pkg">
+      <div class="info">Custo por GB<small>usa 1 GB = 1024 MB</small></div>
+      <input id="inpCustoGB" type="number" inputmode="decimal" min="0" step="0.01" value="${d.custoPorGB || ''}" placeholder="MT" aria-label="Custo por GB em MT">
+    </div>
+    <div class="sec">Ajustar pacotes específicos (opcional)</div>
+    ${linhas || '<div class="empty">Nenhum ajuste. Todos usam o custo por GB.</div>'}
     <div class="sec">Adicionar outro pacote</div>
     <div class="pkg novo">
       <input class="mb" id="inpNovoMb" type="number" inputmode="numeric" min="1" step="1" placeholder="MB" aria-label="MB do novo pacote">
       <input id="inpNovoCusto" type="number" inputmode="decimal" min="0" step="0.01" placeholder="custo MT" aria-label="Custo do novo pacote em MT">
     </div>
-    <div class="sec">Para pacotes sem custo definido (opcional)</div>
-    <div class="pkg">
-      <div class="info">Custo por GB<small>usa 1 GB = 1024 MB</small></div>
-      <input id="inpCustoGB" type="number" inputmode="decimal" min="0" step="0.01" value="${d.custoPorGB || ''}" placeholder="MT" aria-label="Custo por GB em MT">
-    </div>
     <button class="btn-main" id="btnGuardarCusto" style="margin-top:14px">Guardar</button>
-    <p class="note">Lucro = vendido − custo, só das vendas finalizadas hoje. Deixa o campo vazio para tirar o custo de um pacote. Vendas sem custo definido ficam de fora do cálculo.</p>`;
+    <p class="note">Lucro = vendido − custo, só das vendas finalizadas hoje. O ajuste de um pacote tem prioridade sobre o custo por GB. Deixa o campo vazio para tirar o ajuste. Vendas sem nenhum custo ficam de fora do cálculo.</p>`;
 
   document.getElementById('btnGuardarCusto').addEventListener('click', async () => {
     const btn = document.getElementById('btnGuardarCusto');
@@ -806,6 +822,97 @@ function abrirLucro(){
   });
 }
 document.getElementById('btnLucro').addEventListener('click', abrirLucro);
+
+/* ===== Tabela de preços (colar do WhatsApp) ===== */
+function lerTabela(texto){
+  const mapa = new Map();
+  let ignoradas = 0, conflitos = 0;
+  for (const linha of String(texto).split(/\r?\n/)) {
+    const m = linha.match(/(\d+)\s*MB[^\d\n]{0,8}?(\d+(?:[.,]\d+)?)\s*MT/i);
+    if (m) {
+      const mb = parseInt(m[1], 10);
+      const preco = Number(m[2].replace(',', '.'));
+      if (mb > 0 && preco > 0) {
+        if (mapa.has(mb) && mapa.get(mb) !== preco) conflitos++;
+        mapa.set(mb, preco);
+        continue;
+      }
+    }
+    if (/\d\s*MB/i.test(linha)) ignoradas++;
+  }
+  const pacotes = [...mapa.entries()].map(([mb, preco]) => ({ mb, preco })).sort((a, b) => a.mb - b.mb);
+  let foraDeOrdem = 0;
+  for (let i = 1; i < pacotes.length; i++) if (pacotes[i].preco < pacotes[i - 1].preco) foraDeOrdem++;
+  const t = String(texto).match(/total\s*:?\s*(\d+)\s*pacotes/i);
+  return { pacotes, ignoradas, conflitos, foraDeOrdem, declarado: t ? parseInt(t[1], 10) : null };
+}
+
+async function abrirTabela(){
+  abrirSheet('tabela', 'Tabela de preços', 'Cola a tabela do WhatsApp e o painel lê sozinho');
+  let guardada = null;
+  try {
+    const res = await fetch(`${API_BASE}/api/tabela`);
+    if (res.ok) guardada = await res.json();
+  } catch (e) { /* segue sem o resumo da tabela guardada */ }
+
+  const resumo = guardada && guardada.total
+    ? `Tabela guardada: <b>${esc(guardada.total)} pacotes</b> (${esc(guardada.pacotes[0].mb)} MB a ${esc(guardada.pacotes[guardada.pacotes.length - 1].mb)} MB). Colar outra substitui esta.`
+    : 'Ainda não há tabela guardada.';
+
+  sheetBody.innerHTML = `
+    <p class="note" style="margin:0 0 10px">${resumo}</p>
+    <label class="field">
+      <span>Cola aqui a tabela (linhas como "📱 150MB ➜ 4MT")</span>
+      <textarea id="txtTabela" placeholder="Cola aqui…" aria-label="Tabela de preços"></textarea>
+    </label>
+    <div id="prevTabela"></div>
+    <div class="btn-row">
+      <button class="btn-main" id="btnLerTabela">Ler tabela</button>
+      <button class="btn-main" id="btnGuardarTabela" disabled>Guardar</button>
+    </div>`;
+
+  let lida = null;
+  const prev = document.getElementById('prevTabela');
+  const btnGuardar = document.getElementById('btnGuardarTabela');
+
+  document.getElementById('btnLerTabela').addEventListener('click', () => {
+    lida = lerTabela(document.getElementById('txtTabela').value);
+    btnGuardar.disabled = lida.pacotes.length === 0;
+    if (!lida.pacotes.length) {
+      prev.innerHTML = '<div class="preview warn">Não encontrei nenhum pacote. Confirma se as linhas têm o formato 150MB ➜ 4MT.</div>';
+      return;
+    }
+    const p = lida.pacotes;
+    const avisos = [];
+    if (lida.declarado !== null && lida.declarado !== p.length) avisos.push(`A tabela diz ${lida.declarado} pacotes, mas li ${p.length}.`);
+    if (lida.ignoradas) avisos.push(`${lida.ignoradas} linha(s) com MB não foram lidas.`);
+    if (lida.conflitos) avisos.push(`${lida.conflitos} pacote(s) repetido(s) com preços diferentes (vale o último).`);
+    prev.innerHTML = `<div class="preview"><b>${p.length} pacotes lidos</b><br>
+      ${esc(p[0].mb)} MB → ${esc(p[0].preco)} MT &nbsp;…&nbsp; ${esc(p[p.length - 1].mb)} MB → ${esc(p[p.length - 1].preco)} MT
+      ${lida.foraDeOrdem ? `<br><span class="sub">${lida.foraDeOrdem} pacote(s) com preço fora da ordem (pode ser normal).</span>` : ''}
+      ${avisos.map(a => `<br><span class="warn">${esc(a)}</span>`).join('')}</div>`;
+  });
+
+  btnGuardar.addEventListener('click', async () => {
+    if (!lida || !lida.pacotes.length) return;
+    btnGuardar.disabled = true;
+    try {
+      const res = await fetch(`${API_BASE}/api/tabela`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pacotes: lida.pacotes })
+      });
+      const data = await res.json();
+      if (!res.ok || data.erro) throw new Error(data.erro || `HTTP ${res.status}`);
+      mostrarToast(`Tabela guardada: ${data.total} pacotes`);
+      fecharSheet();
+      carregarLucro();
+    } catch (e) {
+      mostrarToast('Não consegui guardar: ' + (e.message || e));
+      btnGuardar.disabled = false;
+    }
+  });
+}
 
 function carregarTudo(){
   carregarStatus();
