@@ -1,14 +1,10 @@
 const BOT_URL = "http://node.modz.ink:25505";
+const BOT_SECRET = process.env.BOT_SHARED_SECRET || "";
 
 module.exports = async function handler(req, res) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ erro: "método não permitido" });
-  }
   try {
-    const r = await fetch(`${BOT_URL}/api/auto-venda`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(req.body),
+    const r = await fetch(`${BOT_URL}/api/fila`, {
+      headers: { "x-bot-secret": BOT_SECRET },
     });
     const data = await r.json();
     res.status(200).json(data);
