@@ -17,6 +17,7 @@ const PERMITIDAS = new Set([
   "pedido",
   "disparo",
   "fila",
+  "fila/acao",
   "lucro",
   "tabela",
 ]);
