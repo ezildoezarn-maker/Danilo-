@@ -25,20 +25,17 @@ module.exports = async function handler(req, res) {
     return res.status(405).json({ erro: "método não permitido" });
   }
 
-  const partes = Array.isArray(req.query.rota) ? req.query.rota : [req.query.rota];
-  const rota = partes.filter(Boolean).join("/");
+  // Lê a rota do próprio endereço pedido (não depende do nome do ficheiro)
+  const alvo = new URL(req.url, "http://localhost");
+  let rota = decodeURIComponent(alvo.pathname).replace(/^\/api\//, "").replace(/\/+$/, "");
 
   if (!PERMITIDAS.has(rota)) {
-    return res.status(404).json({ erro: "rota não encontrada" });
+    return res.status(404).json({ erro: "rota não encontrada", rota });
   }
 
   // Repassa a query string (ex.: ?numero=...) sem o parâmetro interno "rota"
-  const params = new URLSearchParams();
-  for (const [k, v] of Object.entries(req.query)) {
-    if (k === "rota") continue;
-    (Array.isArray(v) ? v : [v]).forEach((x) => params.append(k, x));
-  }
-  const qs = params.toString();
+  alvo.searchParams.delete("rota");
+  const qs = alvo.searchParams.toString();
   const url = `${BOT_URL}/api/${rota}${qs ? "?" + qs : ""}`;
 
   const ctrl = new AbortController();
