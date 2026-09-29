@@ -219,6 +219,36 @@
   .badge.env{color:var(--accent);border-color:var(--accent);}
   .badge.prep{color:var(--amber);border-color:var(--amber);}
 
+  /* ===== Cartão de lucro ===== */
+  .profit{
+    display:block;width:100%;text-align:left;cursor:pointer;color:var(--text);
+    background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    padding:14px;margin-bottom:14px;-webkit-tap-highlight-color:transparent;
+  }
+  .profit:active{background:var(--panel2);}
+  .profit:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+  .profit .top{display:flex;justify-content:space-between;align-items:baseline;}
+  .profit .lbl{font-size:11px;color:var(--sub);}
+  .profit .hint{font-size:10px;color:var(--sub);}
+  .profit .big{font-size:26px;font-weight:700;margin:4px 0 8px;}
+  .profit .big.pos{color:var(--green);}
+  .profit .big.neg{color:var(--red);}
+  .profit .rows{display:flex;gap:16px;font-size:11px;color:var(--sub);}
+  .profit .rows b{display:block;color:var(--text);font-size:13px;font-weight:600;margin-top:1px;}
+  .field{display:block;margin-bottom:12px;}
+  .field span{display:block;font-size:11px;color:var(--sub);margin-bottom:6px;}
+  .field input{
+    width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--line);
+    background:var(--panel2);color:var(--text);font-size:16px;
+  }
+  .field input:focus-visible{outline:2px solid var(--accent);outline-offset:1px;}
+  .btn-main{
+    width:100%;padding:12px;border-radius:12px;border:1px solid var(--accent);
+    background:none;color:var(--accent);font-size:13px;font-weight:600;cursor:pointer;
+  }
+  .btn-main:disabled{opacity:.5;}
+  .note{font-size:11px;color:var(--sub);line-height:1.5;margin-top:10px;}
+
   @media (prefers-reduced-motion:reduce){
     .drawer,.drawer-overlay,.toast{transition:none;}
   }
@@ -259,6 +289,16 @@
     <div class="stat"><div class="num" id="txtSaldoTotal">—</div><div class="lbl">Saldo em carteiras</div></div>
     <div class="stat"><div class="num" id="txtTelefonesOnline">—</div><div class="lbl">Telefones online</div></div>
   </div>
+
+  <button class="profit" id="btnLucro" aria-label="Lucro de hoje. Toca para definir o custo">
+    <div class="top"><span class="lbl">Lucro hoje</span><span class="hint" id="txtLucroHint">toca para ajustar</span></div>
+    <div class="big" id="txtLucro">—</div>
+    <div class="rows">
+      <div>Vendido<b id="txtLucroVendido">—</b></div>
+      <div>Custo<b id="txtLucroCusto">—</b></div>
+      <div>Margem<b id="txtLucroMargem">—</b></div>
+    </div>
+  </button>
 
   <div class="row-title">Últimos eventos</div>
   <div class="card">
@@ -569,7 +609,7 @@ function renderVelocidade(atual){
 
 /* ---- Escolher telefone ---- */
 async function abrirTelefone(){
-  abrirSheet('telefone', 'Telefone para disparar', 'O escolhido tem prioridade; se não puder, o bot tenta os outros');
+  abrirSheet('telefone', 'Telefone para disparar', 'O bot fica no escolhido até ele esgotar; depois passa ao próximo');
   try {
     const res = await fetch(`${API_BASE}/api/disparo`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -580,25 +620,22 @@ async function abrirTelefone(){
 }
 
 function renderTelefone(d){
-  const fixo = d.telefoneFixo || null;
-  const opcoes = [{ id: null, nome: 'Automático', desc: 'Telefone 1 → 2 → 3', disponivel: null }]
-    .concat((d.telefones || []).map(t => ({ id: t.id, nome: t.nome, desc: t.disponivel ? 'Disponível' : 'Sem megas ou limite', disponivel: t.disponivel })));
-
-  sheetBody.innerHTML = opcoes.map(o => `
-    <button class="opt ${o.id === fixo ? 'sel' : ''}" data-id="${o.id ?? ''}">
+  const ativo = d.telefoneAtivo || 1;
+  sheetBody.innerHTML = (d.telefones || []).map(t => `
+    <button class="opt ${t.id === ativo ? 'sel' : ''}" data-id="${t.id}">
       <span class="radio"></span>
-      <span><div class="t">${esc(o.nome)}</div><div class="d">${esc(o.desc)}</div></span>
-      ${o.disponivel === null ? '' : `<span class="dot ${o.disponivel ? 'ok' : ''}"></span>`}
+      <span><div class="t">${esc(t.nome)}</div><div class="d">${t.disponivel ? 'Disponível' : 'Sem megas ou limite'}</div></span>
+      <span class="dot ${t.disponivel ? 'ok' : ''}"></span>
     </button>`).join('');
 
   sheetBody.querySelectorAll('.opt').forEach(btn => {
     btn.addEventListener('click', async () => {
-      const id = btn.dataset.id === '' ? null : Number(btn.dataset.id);
+      const id = Number(btn.dataset.id);
       try {
-        const r = await postDisparo({ telefoneFixo: id });
-        d.telefoneFixo = r.telefoneFixo;
+        const r = await postDisparo({ telefoneAtivo: id });
+        d.telefoneAtivo = r.telefoneAtivo;
         renderTelefone(d);
-        mostrarToast(id ? `Disparo pelo Telefone ${id}` : 'Disparo automático');
+        mostrarToast(`Disparo pelo Telefone ${id}`);
       } catch (e) {
         mostrarToast('Não consegui guardar: ' + (e.message || e));
       }
@@ -666,10 +703,77 @@ document.querySelectorAll('.bb-item').forEach(b => {
   });
 });
 
+/* ===== Lucro do dia ===== */
+const fmtMT = n => (Number(n) || 0).toLocaleString('pt-MZ', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + ' MT';
+let ultimoLucro = null;
+
+async function carregarLucro(){
+  try {
+    const res = await fetch(`${API_BASE}/api/lucro`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const d = await res.json();
+    ultimoLucro = d;
+    const big = document.getElementById('txtLucro');
+    if (!d.custoPorGB) {
+      big.textContent = '—';
+      big.className = 'big';
+      document.getElementById('txtLucroHint').textContent = 'define o custo por GB';
+      document.getElementById('txtLucroVendido').textContent = fmtMT(d.vendido);
+      document.getElementById('txtLucroCusto').textContent = '—';
+      document.getElementById('txtLucroMargem').textContent = '—';
+      return;
+    }
+    big.textContent = fmtMT(d.lucro);
+    big.className = 'big ' + (d.lucro >= 0 ? 'pos' : 'neg');
+    document.getElementById('txtLucroHint').textContent = `custo ${d.custoPorGB} MT/GB`;
+    document.getElementById('txtLucroVendido').textContent = fmtMT(d.vendido);
+    document.getElementById('txtLucroCusto').textContent = fmtMT(d.custo);
+    document.getElementById('txtLucroMargem').textContent = d.margem + '%';
+  } catch (e) {
+    document.getElementById('txtLucro').textContent = 'ERRO';
+    console.error('Erro ao carregar lucro:', e);
+  }
+}
+
+function abrirLucro(){
+  abrirSheet('lucro', 'Custo dos megas', 'Usado para calcular o lucro do dia');
+  const atual = ultimoLucro && ultimoLucro.custoPorGB ? ultimoLucro.custoPorGB : '';
+  sheetBody.innerHTML = `
+    <label class="field">
+      <span>Quanto pagas por 1 GB (em MT)?</span>
+      <input id="inpCusto" type="number" inputmode="decimal" min="0" step="0.01" value="${esc(atual)}" placeholder="ex.: 45">
+    </label>
+    <button class="btn-main" id="btnGuardarCusto">Guardar</button>
+    <p class="note">Lucro = vendido − custo. O custo é calculado pelos MB das vendas finalizadas hoje, com 1 GB = 1024 MB. Falhas não entram.</p>`;
+  document.getElementById('btnGuardarCusto').addEventListener('click', async () => {
+    const btn = document.getElementById('btnGuardarCusto');
+    const v = Number(document.getElementById('inpCusto').value);
+    if (!Number.isFinite(v) || v < 0) { mostrarToast('Valor inválido'); return; }
+    btn.disabled = true;
+    try {
+      const res = await fetch(`${API_BASE}/api/lucro`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ custoPorGB: v })
+      });
+      const data = await res.json();
+      if (!res.ok || data.erro) throw new Error(data.erro || `HTTP ${res.status}`);
+      mostrarToast('Custo guardado');
+      fecharSheet();
+      carregarLucro();
+    } catch (e) {
+      mostrarToast('Não consegui guardar: ' + (e.message || e));
+      btn.disabled = false;
+    }
+  });
+}
+document.getElementById('btnLucro').addEventListener('click', abrirLucro);
+
 function carregarTudo(){
   carregarStatus();
   carregarResumo();
   carregarEventos();
+  carregarLucro();
 }
 
 carregarTudo();
