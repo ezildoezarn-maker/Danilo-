@@ -247,6 +247,13 @@
     background:none;color:var(--accent);font-size:13px;font-weight:600;cursor:pointer;
   }
   .btn-main:disabled{opacity:.5;}
+  .pkg{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--line);}
+  .pkg .info{font-size:13px;font-weight:600;}
+  .pkg .info small{display:block;font-size:11px;font-weight:400;color:var(--sub);margin-top:2px;}
+  .pkg input{width:96px;padding:9px 10px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font-size:15px;text-align:right;}
+  .pkg input:focus-visible{outline:2px solid var(--accent);outline-offset:1px;}
+  .pkg.novo input.mb{width:110px;text-align:left;}
+  .sec{font-size:11px;color:var(--sub);margin:14px 0 4px;}
   .note{font-size:11px;color:var(--sub);line-height:1.5;margin-top:10px;}
 
   @media (prefers-reduced-motion:reduce){
@@ -714,19 +721,19 @@ async function carregarLucro(){
     const d = await res.json();
     ultimoLucro = d;
     const big = document.getElementById('txtLucro');
-    if (!d.custoPorGB) {
+    const hint = document.getElementById('txtLucroHint');
+    document.getElementById('txtLucroVendido').textContent = fmtMT(d.vendido);
+    if (!d.temCustos) {
       big.textContent = '—';
       big.className = 'big';
-      document.getElementById('txtLucroHint').textContent = 'define o custo por GB';
-      document.getElementById('txtLucroVendido').textContent = fmtMT(d.vendido);
+      hint.textContent = 'define os custos dos pacotes';
       document.getElementById('txtLucroCusto').textContent = '—';
       document.getElementById('txtLucroMargem').textContent = '—';
       return;
     }
     big.textContent = fmtMT(d.lucro);
     big.className = 'big ' + (d.lucro >= 0 ? 'pos' : 'neg');
-    document.getElementById('txtLucroHint').textContent = `custo ${d.custoPorGB} MT/GB`;
-    document.getElementById('txtLucroVendido').textContent = fmtMT(d.vendido);
+    hint.textContent = d.semCusto > 0 ? `${d.semCusto} venda(s) sem custo` : 'toca para ajustar';
     document.getElementById('txtLucroCusto').textContent = fmtMT(d.custo);
     document.getElementById('txtLucroMargem').textContent = d.margem + '%';
   } catch (e) {
@@ -736,29 +743,60 @@ async function carregarLucro(){
 }
 
 function abrirLucro(){
-  abrirSheet('lucro', 'Custo dos megas', 'Usado para calcular o lucro do dia');
-  const atual = ultimoLucro && ultimoLucro.custoPorGB ? ultimoLucro.custoPorGB : '';
+  abrirSheet('lucro', 'Custo dos pacotes', 'Quanto pagas por cada pacote que vendes');
+  const d = ultimoLucro || { pacotes: [], custoPorGB: 0 };
+  const linhas = (d.pacotes || []).map(p => `
+    <div class="pkg">
+      <div class="info">${esc(p.mb)} MB<small>${p.valor ? 'vendes a ' + esc(p.valor) + ' MT' : 'sem vendas ainda'}</small></div>
+      <input class="custo-pkg" data-mb="${esc(p.mb)}" type="number" inputmode="decimal" min="0" step="0.01"
+             value="${p.custo ?? ''}" placeholder="custo MT" aria-label="Custo do pacote de ${esc(p.mb)} MB em MT">
+    </div>`).join('');
+
   sheetBody.innerHTML = `
-    <label class="field">
-      <span>Quanto pagas por 1 GB (em MT)?</span>
-      <input id="inpCusto" type="number" inputmode="decimal" min="0" step="0.01" value="${esc(atual)}" placeholder="ex.: 45">
-    </label>
-    <button class="btn-main" id="btnGuardarCusto">Guardar</button>
-    <p class="note">Lucro = vendido − custo. O custo é calculado pelos MB das vendas finalizadas hoje, com 1 GB = 1024 MB. Falhas não entram.</p>`;
+    <div class="sec">Pacotes já vendidos</div>
+    ${linhas || '<div class="empty">Ainda não há pacotes vendidos. Adiciona um abaixo.</div>'}
+    <div class="sec">Adicionar outro pacote</div>
+    <div class="pkg novo">
+      <input class="mb" id="inpNovoMb" type="number" inputmode="numeric" min="1" step="1" placeholder="MB" aria-label="MB do novo pacote">
+      <input id="inpNovoCusto" type="number" inputmode="decimal" min="0" step="0.01" placeholder="custo MT" aria-label="Custo do novo pacote em MT">
+    </div>
+    <div class="sec">Para pacotes sem custo definido (opcional)</div>
+    <div class="pkg">
+      <div class="info">Custo por GB<small>usa 1 GB = 1024 MB</small></div>
+      <input id="inpCustoGB" type="number" inputmode="decimal" min="0" step="0.01" value="${d.custoPorGB || ''}" placeholder="MT" aria-label="Custo por GB em MT">
+    </div>
+    <button class="btn-main" id="btnGuardarCusto" style="margin-top:14px">Guardar</button>
+    <p class="note">Lucro = vendido − custo, só das vendas finalizadas hoje. Deixa o campo vazio para tirar o custo de um pacote. Vendas sem custo definido ficam de fora do cálculo.</p>`;
+
   document.getElementById('btnGuardarCusto').addEventListener('click', async () => {
     const btn = document.getElementById('btnGuardarCusto');
-    const v = Number(document.getElementById('inpCusto').value);
-    if (!Number.isFinite(v) || v < 0) { mostrarToast('Valor inválido'); return; }
+    const custosPacotes = {};
+    sheetBody.querySelectorAll('.custo-pkg').forEach(inp => {
+      custosPacotes[inp.dataset.mb] = inp.value === '' ? null : Number(inp.value);
+    });
+    const novoMb = document.getElementById('inpNovoMb').value;
+    const novoCusto = document.getElementById('inpNovoCusto').value;
+    if (novoMb !== '' || novoCusto !== '') {
+      if (novoMb === '' || novoCusto === '' || !(Number(novoMb) > 0) || !(Number(novoCusto) >= 0)) {
+        mostrarToast('Preenche MB e custo do novo pacote');
+        return;
+      }
+      custosPacotes[String(parseInt(novoMb, 10))] = Number(novoCusto);
+    }
+    for (const v of Object.values(custosPacotes)) {
+      if (v !== null && (!Number.isFinite(v) || v < 0)) { mostrarToast('Há um valor inválido'); return; }
+    }
+    const gb = document.getElementById('inpCustoGB').value;
     btn.disabled = true;
     try {
       const res = await fetch(`${API_BASE}/api/lucro`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ custoPorGB: v })
+        body: JSON.stringify({ custosPacotes, custoPorGB: gb === '' ? 0 : Number(gb) })
       });
       const data = await res.json();
       if (!res.ok || data.erro) throw new Error(data.erro || `HTTP ${res.status}`);
-      mostrarToast('Custo guardado');
+      mostrarToast('Custos guardados');
       fecharSheet();
       carregarLucro();
     } catch (e) {
