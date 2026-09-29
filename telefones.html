@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Telefones & SIMs — Megas Express</title>
+<link rel="manifest" href="/manifest.json">
+<style>
+  :root{
+    --bg:#0d1117;--panel:#161b22;--panel2:#1c2230;--line:#262d3a;
+    --green:#2ecc71;--red:#e74c3c;--amber:#f5a623;
+    --text:#e8ecf1;--sub:#8b96a5;--accent:#3ddc84;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{
+    background:var(--bg);font-family:'Segoe UI',Roboto,-apple-system,sans-serif;
+    color:var(--text);min-height:100vh;display:flex;justify-content:center;
+    padding:24px 14px 30px;
+  }
+  .wrap{width:100%;max-width:420px;}
+  .topbar{display:flex;align-items:center;justify-content:space-between;
+    padding-bottom:14px;border-bottom:1px solid var(--line);margin-bottom:16px;}
+  .topbar h1{font-size:18px;font-weight:600;}
+  .topbar .tag{font-size:11px;color:var(--sub);}
+
+  .nav{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap;}
+  .nav a{
+    flex:1;text-align:center;font-size:11px;color:var(--sub);
+    background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:8px 2px;text-decoration:none;min-width:70px;
+  }
+  .nav a.active{color:var(--accent);border-color:var(--accent);}
+
+  .phone-card{
+    background:var(--panel);border:1px solid var(--line);border-radius:16px;
+    padding:16px;margin-bottom:14px;
+  }
+  .phone-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;}
+  .phone-head .nome{font-size:14px;font-weight:700;}
+  .phone-head .device{font-size:11px;color:var(--sub);}
+
+  .transfer-row{display:flex;align-items:center;gap:14px;
+    background:var(--panel2);border-radius:12px;padding:12px;margin-bottom:12px;}
+  .ring-mini{position:relative;width:40px;height:40px;flex-shrink:0;}
+  .ring-mini svg{transform:rotate(-90deg);}
+  .ring-mini .num{position:absolute;top:0;left:0;width:100%;height:100%;
+    display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;}
+  .transfer-info .big{font-size:12px;font-weight:600;}
+  .transfer-info .small{font-size:11px;color:var(--sub);margin-top:1px;}
+
+  .sim-right{display:flex;align-items:center;gap:8px;}
+  .sim-transf{font-size:10px;color:var(--sub);white-space:nowrap;}
+
+  .sim-row{
+    display:flex;justify-content:space-between;align-items:center;
+    padding:10px 0;border-top:1px solid var(--line);
+  }
+  .sim-row:first-of-type{border-top:none;}
+  .sim-left{display:flex;align-items:center;gap:10px;}
+  .dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
+  .dot.on{background:var(--green);}
+  .dot.off{background:var(--red);}
+  .sim-label{font-size:12px;font-weight:600;}
+  .sim-op{font-size:11px;color:var(--sub);margin-top:1px;}
+  .sim-mb{font-size:12px;color:var(--sub);white-space:nowrap;}
+
+  .empty{color:var(--sub);font-size:12px;text-align:center;padding:16px 0;}
+  .refresh-note{font-size:10px;color:var(--sub);text-align:center;margin-top:14px;}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="topbar">
+    <h1>Telefones & SIMs</h1>
+    <span class="tag">Megas Express</span>
+  </div>
+
+  <div class="nav">
+    <a href="/index.html">Painel</a>
+    <a href="/telefones.html" class="active">Telefones</a>
+    <a href="/configuracoes.html">Config</a>
+    <a href="/historico.html">Histórico</a>
+    <a href="/pedido.html">Novo Pedido</a>
+  </div>
+
+  <div id="listTelefones"><div class="empty">carregando…</div></div>
+
+  <div class="refresh-note">Atualiza a cada 30s</div>
+</div>
+
+<script>
+const API_BASE = "";
+
+function fmtMB(mb){
+  mb = Number(mb) || 0;
+  if (mb >= 1000) return (mb / 1000).toFixed(2).replace('.', ',') + ' GB';
+  return mb + ' MB';
+}
+
+function ringMini(atual, total){
+  const pct = total > 0 ? Math.min(100, Math.round((atual / total) * 100)) : 0;
+  const r = 16, c = 2 * Math.PI * r;
+  const offset = c - (pct / 100) * c;
+  return `
+    <div class="ring-mini">
+      <svg width="40" height="40">
+        <circle cx="20" cy="20" r="${r}" stroke="#262d3a" stroke-width="4" fill="none"/>
+        <circle cx="20" cy="20" r="${r}" stroke="var(--green)" stroke-width="4" fill="none"
+          stroke-dasharray="${c}" stroke-dashoffset="${offset}" stroke-linecap="round"/>
+      </svg>
+      <div class="num">${atual}</div>
+    </div>
+  `;
+}
+
+function simRow(sim, label){
+  const disponivel = !!sim.disponivel;
+  return `
+    <div class="sim-row">
+      <div class="sim-left">
+        <span class="dot ${disponivel ? 'on' : 'off'}"></span>
+        <div>
+          <div class="sim-label">${label}</div>
+          <div class="sim-op">${sim.operadora} · ${fmtMB(sim.mbAtual)}</div>
+        </div>
+      </div>
+      <div class="sim-right">
+        ${ringMini(sim.transferenciasHoje, sim.limiteDiario)}
+        <div class="sim-transf">${sim.transferenciasHoje}/${sim.limiteDiario} hoje</div>
+      </div>
+    </div>
+  `;
+}
+
+async function carregarTelefones(){
+  const container = document.getElementById('listTelefones');
+  try {
+    const res = await fetch(`${API_BASE}/api/telefones-status`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const telefones = await res.json();
+
+    if (!telefones || telefones.length === 0){
+      container.innerHTML = '<div class="empty">Nenhum telefone cadastrado</div>';
+      return;
+    }
+
+    container.innerHTML = telefones.map(t => `
+      <div class="phone-card">
+        <div class="phone-head">
+          <div class="nome">${t.nome}</div>
+          <div class="device">${t.marca} ${t.modelo}</div>
+        </div>
+        ${simRow(t.sim1, 'SIM 1')}
+        ${simRow(t.sim2, 'SIM 2')}
+      </div>
+    `).join('');
+  } catch (e) {
+    container.innerHTML = `<div class="empty">Erro: ${String(e.message || e)}</div>`;
+  }
+}
+
+carregarTelefones();
+setInterval(carregarTelefones, 30000);
+</script>
+
+</body>
+</html>
