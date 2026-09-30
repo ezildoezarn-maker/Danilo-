@@ -21,6 +21,9 @@ const PERMITIDAS = new Set([
   "lucro",
   "tabela",
   "alertas",
+  "push/chave",
+  "push/inscrever",
+  "push/teste",
 ]);
 
 module.exports = async function handler(req, res) {
