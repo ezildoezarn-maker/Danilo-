@@ -282,6 +282,16 @@
   .btn-main.danger{border-color:var(--red);color:var(--red);}
   .btn-main.ghost{border-color:var(--line);color:var(--sub);}
   .btn-main.armado{background:var(--panel2);}
+  .banner{
+    display:flex;align-items:center;gap:10px;width:100%;text-align:left;cursor:pointer;
+    background:rgba(245,166,35,.12);border:1px solid var(--amber);border-radius:14px;
+    padding:12px 14px;margin-bottom:14px;color:var(--text);font-size:13px;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .banner[hidden]{display:none;}
+  .banner b{display:block;}
+  .banner small{display:block;font-size:11px;color:var(--sub);margin-top:2px;}
+  .banner:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
   .btn-row{display:flex;gap:8px;}
   .btn-row .btn-main{flex:1;}
   .note{font-size:11px;color:var(--sub);line-height:1.5;margin-top:10px;}
@@ -320,6 +330,11 @@
     <div class="switch" id="switchAutoVenda"></div>
   </div>
 
+  <button class="banner" id="bannerSaldo" hidden aria-label="Saldo baixo. Toca para ver os detalhes">
+    <span aria-hidden="true">⚠️</span>
+    <span><b>Saldo baixo</b><small id="txtBannerSaldo"></small></span>
+  </button>
+
   <div class="stat-grid">
     <div class="stat"><div class="num" id="txtVendasHoje">—</div><div class="lbl">Vendas hoje</div></div>
     <div class="stat"><div class="num" id="txtMbHoje">—</div><div class="lbl">MB hoje</div></div>
@@ -356,6 +371,10 @@
   <button class="drawer-item" data-acao="tabela">
     <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18"/><path d="M9 10v10"/></svg>
     Tabela de preços
+  </button>
+  <button class="drawer-item" data-acao="alertas">
+    <svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+    Alerta de saldo
   </button>
   <button class="drawer-item" data-acao="associar">
     <svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.07 0l2.12-2.12a5 5 0 0 0-7.07-7.07L11 4.93"/><path d="M14 11a5 5 0 0 0-7.07 0L4.81 13.12a5 5 0 0 0 7.07 7.07L13 19.07"/></svg>
@@ -545,6 +564,8 @@ document.querySelectorAll('.drawer-item').forEach(item => {
     fecharMenu();
     if (acao === 'tabela') {
       abrirTabela();
+    } else if (acao === 'alertas') {
+      abrirAlertas();
     } else if (acao === 'sobre') {
       modalSobre.classList.add('open');
     } else if (acao === 'contacto') {
@@ -1067,11 +1088,85 @@ async function abrirTabela(){
   });
 }
 
+/* ===== Alerta de saldo baixo ===== */
+async function carregarAlertas(){
+  try {
+    const res = await fetch(`${API_BASE}/api/alertas`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const d = await res.json();
+    const box = document.getElementById('bannerSaldo');
+    const baixos = (d.sims || []).filter(s => s.baixo);
+    if (d.limiteMB > 0 && baixos.length) {
+      document.getElementById('txtBannerSaldo').textContent =
+        baixos.map(s => `${s.nome} ${s.sim}: ${s.mb} MB`).join(' · ') + ` (limite ${d.limiteMB} MB)`;
+      box.hidden = false;
+    } else {
+      box.hidden = true;
+    }
+  } catch (e) {
+    console.error('Erro ao carregar alertas:', e);
+  }
+}
+
+async function abrirAlertas(){
+  abrirSheet('alertas', 'Alerta de saldo', 'Avisa quando um SIM fica com poucos MB');
+  try {
+    const res = await fetch(`${API_BASE}/api/alertas`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    renderAlertas(await res.json());
+  } catch (e) {
+    sheetBody.innerHTML = `<div class="empty">Erro: ${esc(e.message || e)}</div>`;
+  }
+}
+
+function renderAlertas(d){
+  const linhas = (d.sims || []).map(s => `
+    <div class="pkg">
+      <div class="info">${esc(s.nome)} · ${esc(s.sim)}<small>${esc(s.mb)} MB</small></div>
+      <span class="badge ${d.limiteMB > 0 ? (s.baixo ? 'prep' : 'env') : ''}">${d.limiteMB > 0 ? (s.baixo ? 'Baixo' : 'OK') : '—'}</span>
+    </div>`).join('');
+
+  sheetBody.innerHTML = `
+    <label class="field">
+      <span>Avisar quando um SIM ficar abaixo de (MB)</span>
+      <input id="inpLimiteSaldo" type="number" inputmode="numeric" min="0" step="1" value="${d.limiteMB || ''}" placeholder="ex.: 500" aria-label="Limite de saldo em MB">
+    </label>
+    <button class="btn-main" id="btnGuardarAlerta">Guardar</button>
+    <p class="note">Quando um SIM descer do limite, o painel mostra um aviso e o bot manda uma mensagem ao grupo admin, uma vez por SIM. Se o saldo voltar a subir, o aviso reinicia. Vazio ou 0 desliga. SIMs sem megas e sem limite de envio ficam de fora.</p>
+    <div class="sec">Saldo atual dos SIMs</div>
+    ${linhas || '<div class="empty">Nenhum SIM configurado</div>'}`;
+
+  document.getElementById('btnGuardarAlerta').addEventListener('click', async () => {
+    const btn = document.getElementById('btnGuardarAlerta');
+    const v = document.getElementById('inpLimiteSaldo').value;
+    const n = v === '' ? 0 : Number(v);
+    if (!Number.isFinite(n) || n < 0) { mostrarToast('Valor inválido'); return; }
+    btn.disabled = true;
+    try {
+      const res = await fetch(`${API_BASE}/api/alertas`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ limiteMB: n })
+      });
+      const data = await res.json();
+      if (!res.ok || data.erro) throw new Error(data.erro || `HTTP ${res.status}`);
+      mostrarToast(n > 0 ? `Alerta abaixo de ${n} MB` : 'Alerta desligado');
+      fecharSheet();
+      carregarAlertas();
+    } catch (e) {
+      mostrarToast('Não consegui guardar: ' + (e.message || e));
+      btn.disabled = false;
+    }
+  });
+}
+document.getElementById('bannerSaldo').addEventListener('click', abrirAlertas);
+
 function carregarTudo(){
   carregarStatus();
   carregarResumo();
   carregarEventos();
   carregarLucro();
+  carregarAlertas();
 }
 
 carregarTudo();
