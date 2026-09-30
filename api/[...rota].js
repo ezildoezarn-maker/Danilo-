@@ -17,13 +17,13 @@ const PERMITIDAS = new Set([
   "pedido",
   "disparo",
   "fila",
-  "fila/acao",
+  "fila-acao",
   "lucro",
   "tabela",
   "alertas",
-  "push/chave",
-  "push/inscrever",
-  "push/teste",
+  "push-chave",
+  "push-inscrever",
+  "push-teste",
 ]);
 
 module.exports = async function handler(req, res) {
