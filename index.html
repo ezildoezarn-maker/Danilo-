@@ -821,7 +821,7 @@ function verPedido(p){
     const pin = document.getElementById('inpPinAcao').value;
     if (!pin) { mostrarToast('Escreve o PIN'); return; }
     try {
-      const res = await fetch(`${API_BASE}/api/fila/acao`, {
+      const res = await fetch(`${API_BASE}/api/fila-acao`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pedidoId: p.pedidoId, acao, pin })
@@ -1189,12 +1189,12 @@ async function ativarPush(pin){
   await navigator.serviceWorker.ready;
   const perm = await Notification.requestPermission();
   if (perm !== 'granted') throw new Error('Permissão de notificações não concedida');
-  const { publicKey } = await pedirJSON(`${API_BASE}/api/push/chave`);
+  const { publicKey } = await pedirJSON(`${API_BASE}/api/push-chave`);
   let sub = await reg.pushManager.getSubscription();
   if (!sub) {
     sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: chaveParaBytes(publicKey) });
   }
-  await pedirJSON(`${API_BASE}/api/push/inscrever`, {
+  await pedirJSON(`${API_BASE}/api/push-inscrever`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ subscription: sub.toJSON(), pin })
@@ -1250,7 +1250,7 @@ async function montarPush(){
   document.getElementById('btnTestePush').addEventListener('click', async () => {
     const pin = lerPin(); if (!pin) return;
     try {
-      await pedirJSON(`${API_BASE}/api/push/teste`, {
+      await pedirJSON(`${API_BASE}/api/push-teste`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pin })
