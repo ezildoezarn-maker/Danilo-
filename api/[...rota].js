@@ -20,6 +20,7 @@ const PERMITIDAS = new Set([
   "fila/acao",
   "lucro",
   "tabela",
+  "alertas",
 ]);
 
 module.exports = async function handler(req, res) {
