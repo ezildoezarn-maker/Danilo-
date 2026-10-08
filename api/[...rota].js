@@ -19,11 +19,18 @@ const PERMITIDAS = new Set([
   "fila",
   "fila-acao",
   "lucro",
+  "semana",
   "tabela",
   "alertas",
   "push-chave",
   "push-inscrever",
   "push-teste",
+  "inativos",
+  "recargas",
+  "sms-massa",
+  "sms-expiracao",
+  "sms-conversas",
+  "grupos-aviso",
 ]);
 
 module.exports = async function handler(req, res) {
