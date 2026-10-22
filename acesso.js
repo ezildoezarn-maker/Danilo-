@@ -104,16 +104,6 @@
       if (primeiro) drawer.insertBefore(b, primeiro); else drawer.appendChild(b);
     }
 
-    // dono: atalho para o Painel Mestre (todos os apps alugados) no menu
-    if (drawer && s.admin && !document.getElementById('mxMestre')) {
-      var m = document.createElement('button');
-      m.className = 'drawer-item'; m.id = 'mxMestre';
-      m.innerHTML = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><circle cx="5" cy="5" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><path d="M7 7l3 3M17 7l-3 3M7 17l3-3M17 17l-3-3"/></svg>Painel Mestre (todos os apps)';
-      m.onclick = function () { location.href = '/mestre.html'; };
-      var c = document.getElementById('mxContas');
-      if (c && c.parentNode) c.parentNode.insertBefore(m, c.nextSibling); else drawer.appendChild(m);
-    }
-
     // aviso de aluguer a acabar (3 dias ou menos)
     if (!s.admin && s.dias != null && s.dias <= 3 && !document.getElementById('mxAviso') && document.querySelector('.wrap')) {
       var av = document.createElement('div');
